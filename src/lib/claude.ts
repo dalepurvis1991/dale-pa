@@ -4,16 +4,9 @@ import {
   createLinearIssue,
   updateLinearIssue,
 } from './tools/linear';
-import {
-  checkEmails,
-  draftEmail,
-  sendEmail,
-} from './tools/gmail';
-import {
-  checkCalendar,
-  createCalendarEvent,
-  updateCalendarEvent,
-} from './tools/calendar';
+// Gmail and Calendar tools disabled until Google OAuth is configured
+// import { checkEmails, draftEmail, sendEmail } from './tools/gmail';
+// import { checkCalendar, createCalendarEvent, updateCalendarEvent } from './tools/calendar';
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -39,16 +32,14 @@ KEY PEOPLE:
 YOUR JOBS BY CALL TYPE:
 
 MORNING CALL (~7:30-8am):
-1. Email triage — summarize overnight emails, flag urgent items
-2. Calendar review — what's on today, any new invites
-3. Linear sprint check — what's in progress, blocked, due today/this week
-4. Brain dump capture — route ideas correctly (Linear for tasks, Email for actions, Calendar for meetings)
-5. Agency check-in — any open items from Salience or DMP
+1. Linear sprint check — what's in progress, blocked, due today/this week
+2. Brain dump capture — route ideas correctly (Linear for tasks)
+3. Agency check-in — any open items from Salience or DMP
+(Note: Email and Calendar tools coming soon — for now, focus on Linear and task capture)
 
 EVENING CALL (~6pm):
 1. Day debrief — what got done, what didn't, any blockers
 2. Quick wins for tomorrow — 2-3 things to hit first thing
-3. EOD emails — any replies that need going out today
 
 AD-HOC CALLS:
 - Quick task capture
@@ -136,100 +127,8 @@ export async function orchestrateConversation(
   ];
 
   const tools = [
-    {
-      name: 'check_emails',
-      description:
-        'Search Dale\'s Gmail inbox. Returns recent emails with subject, sender, and brief snippet. Used for morning triage and checking for urgent items.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description:
-              'Search query (e.g., "from:zack@floorgiants.co.uk", "subject:sprint", "is:unread"). Leave empty to get recent emails.',
-          },
-          max_results: {
-            type: 'integer',
-            description: 'Maximum number of emails to return (default: 5, max: 20)',
-            default: 5,
-          },
-        },
-        required: ['query'],
-      },
-    },
-    {
-      name: 'draft_email',
-      description:
-        'Create a Gmail draft email for Dale to review before sending. Does not send automatically.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          to: {
-            type: 'string',
-            description: 'Recipient email address',
-          },
-          subject: {
-            type: 'string',
-            description: 'Email subject line',
-          },
-          body: {
-            type: 'string',
-            description: 'Email body text (plain text, no HTML)',
-          },
-          cc: {
-            type: 'string',
-            description: 'CC recipients (optional, comma-separated)',
-          },
-        },
-        required: ['to', 'subject', 'body'],
-      },
-    },
-    {
-      name: 'check_calendar',
-      description: 'List calendar events for a given date. Returns time, title, attendees, and meeting location/link.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          date: {
-            type: 'string',
-            description:
-              "Date to check (format: YYYY-MM-DD, or 'today', 'tomorrow', 'next Monday')",
-          },
-        },
-        required: ['date'],
-      },
-    },
-    {
-      name: 'create_calendar_event',
-      description: 'Create a new calendar event. Confirm all details with Dale before creating.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          title: {
-            type: 'string',
-            description: 'Meeting title',
-          },
-          date: {
-            type: 'string',
-            description: 'Date (format: YYYY-MM-DD)',
-          },
-          time: {
-            type: 'string',
-            description: 'Start time (format: HH:MM, e.g., "14:30")',
-          },
-          duration_minutes: {
-            type: 'integer',
-            description: 'Meeting duration in minutes (default: 30)',
-          },
-          attendees: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Email addresses of attendees (optional)',
-          },
-        },
-        required: ['title', 'date', 'time'],
-      },
-    },
+    // Gmail and Calendar tools disabled until Google OAuth is configured
+    // They can be re-enabled by uncommenting and adding GOOGLE_* env vars
     {
       name: 'list_linear_issues',
       description:
@@ -331,33 +230,7 @@ export async function orchestrateConversation(
       let result = '';
 
       try {
-        if (toolUse.name === 'check_emails') {
-          const emails = await checkEmails(
-            toolUse.input.query || '',
-            toolUse.input.max_results || 5
-          );
-          result = JSON.stringify(emails);
-        } else if (toolUse.name === 'draft_email') {
-          const draft = await draftEmail(
-            toolUse.input.to,
-            toolUse.input.subject,
-            toolUse.input.body,
-            toolUse.input.cc
-          );
-          result = JSON.stringify(draft);
-        } else if (toolUse.name === 'check_calendar') {
-          const events = await checkCalendar(toolUse.input.date);
-          result = JSON.stringify(events);
-        } else if (toolUse.name === 'create_calendar_event') {
-          const event = await createCalendarEvent(
-            toolUse.input.title,
-            toolUse.input.date,
-            toolUse.input.time,
-            toolUse.input.duration_minutes || 30,
-            toolUse.input.attendees
-          );
-          result = JSON.stringify(event);
-        } else if (toolUse.name === 'list_linear_issues') {
+        if (toolUse.name === 'list_linear_issues') {
           const issues = await listLinearIssues(
             toolUse.input.status,
             toolUse.input.sprint,
