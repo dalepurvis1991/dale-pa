@@ -14,7 +14,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "@anthropic-ai/sdk": "^0.24.0",
-    "@linear/sdk": "^6.5.0",
+    "@linear/sdk": "^77.0.0",
     "pg": "^8.11.0"
   },
   "devDependencies": {
