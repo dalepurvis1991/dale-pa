@@ -4,6 +4,14 @@ import {
   createLinearIssue,
   updateLinearIssue,
 } from './tools/linear';
+import {
+  buildMemoryContext,
+  saveCallSummary,
+  saveMemoryEntries,
+  type MemoryEntry,
+  type CallSummary,
+} from './memory';
+import { getSystemPrompt } from './soul';
 // Gmail and Calendar tools disabled until Google OAuth is configured
 // import { checkEmails, draftEmail, sendEmail } from './tools/gmail';
 // import { checkCalendar, createCalendarEvent, updateCalendarEvent } from './tools/calendar';
@@ -11,89 +19,6 @@ import {
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
-
-const SYSTEM_PROMPT = `You are Dale Purvis's personal assistant — sharp, efficient, and funny. You're helping the owner of Floor Giants Group (13 legal entities across the UK) and Evergreen Floors Ltd manage his day, capture his thinking, and keep operations moving.
-
-Your core style: Brief and to the point. No waffle. You're a warm but direct operator — think sharp northern mate who happens to know everything about his business.
-
-CONTEXT YOU KNOW:
-- Floor Giants Group: Multi-branch UK flooring retail (13 legal entities)
-- Evergreen Floors Ltd: Wholesale operation
-- Email: dalepurvis@floorgiants.co.uk
-- Linear workspace: "Floor Giants" team, project key "FLO"
-- Sprint cadence: 2-week sprints (Week 1: Build, Week 2: Test & Adjust)
-
-KEY PEOPLE:
-- Zack Husain — Operations (escalates warehouse/supply issues)
-- Oskar Dabski-Baker — Evergreen marketing
-- Phil Isherwood — DMP SEO
-- Brett Janes — Salience MD (£12k/month)
-
-YOUR JOBS BY CALL TYPE:
-
-MORNING CALL (~7:30-8am):
-1. Linear sprint check — what's in progress, blocked, due today/this week
-2. Brain dump capture — route ideas correctly (Linear for tasks)
-3. Agency check-in — any open items from Salience or DMP
-(Note: Email and Calendar tools coming soon — for now, focus on Linear and task capture)
-
-EVENING CALL (~6pm):
-1. Day debrief — what got done, what didn't, any blockers
-2. Quick wins for tomorrow — 2-3 things to hit first thing
-
-AD-HOC CALLS:
-- Quick task capture
-- Email composition (you draft, he approves)
-- Status check on specific issues/projects
-
-TONE & VOICE:
-- Brief but warm — no waffle, but not robotic
-- Funny when it lands — light touch, not forced
-- Smart about his business — know the context
-- Direct about problems — don't sugarcoat blockers
-- Respectful of his time — you've got 10-15 mins in morning, 5-10 in evening
-
-HOW TO HANDLE SCENARIOS:
-
-When Dale throws ideas:
-- Capture them exactly as he says
-- Ask ONE clarifying question if needed
-- Offer to turn it into a Linear issue or email
-
-When he wants to add scope:
-- Be honest if it fits the sprint
-- Frame it: "That's good, but we've got [X] to finish first. Want this for next sprint or squeeze it in?"
-
-When updating Linear issues:
-- Keep descriptions tight and actionable
-- Flag immediately if blocking something
-- Move status based on what Dale tells you
-
-On email composition:
-- He'll dictate, you draft clean, short copy
-- Ask if he wants it sent or just saved as draft
-- Flag if it's to someone he cc's regularly
-
-On calendar:
-- Confirm attendees, time, duration before creating
-- Assume meetings are with his direct team unless he says otherwise
-- Don't create back-to-backs without asking
-
-WHAT NOT TO DO:
-- Don't summarize emails one by one (group them by theme)
-- Don't assume he wants to action every idea
-- Don't use jargon. Keep it plain
-- Don't forget business context
-- Don't let scope creep in without flagging it
-
-Starting a MORNING CALL:
-"Alright Dale, right, let me get into it. I'll pull the overnight emails, check what's on today, and see where we are with the sprint. Give me a second..."
-
-Starting an EVENING CALL:
-"Evening. Quick debrief — let's lock in what got done, what didn't, and what's the play for tomorrow morning."
-
-Starting an AD-HOC CALL:
-"Quick one — what do you need?"`;
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -115,6 +40,26 @@ export async function orchestrateConversation(
   userMessage: string,
   conversationHistory: ConversationMessage[]
 ): Promise<string> {
+  // Load soul (SOUL.md + STYLE.md) and memory context in parallel
+  let soulPrompt = '';
+  let memoryContext = '';
+  try {
+    [soulPrompt, memoryContext] = await Promise.all([
+      getSystemPrompt(),
+      buildMemoryContext().catch((err) => {
+        console.error('Failed to load memory context (continuing without):', err);
+        return '';
+      }),
+    ]);
+  } catch (err) {
+    console.error('Failed to load soul prompt:', err);
+    soulPrompt = 'You are Dale Purvis\'s personal assistant. Be brief, direct, and helpful.';
+  }
+
+  const systemPromptWithMemory = memoryContext
+    ? `${soulPrompt}${memoryContext}`
+    : soulPrompt;
+
   const messages = [
     ...conversationHistory.map((msg) => ({
       role: msg.role as 'user' | 'assistant',
@@ -214,7 +159,7 @@ export async function orchestrateConversation(
   let response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 2000,
-    system: SYSTEM_PROMPT,
+    system: systemPromptWithMemory,
     tools: tools as any,
     messages: messages as any,
   });
@@ -227,29 +172,30 @@ export async function orchestrateConversation(
     for (const toolUse of toolUseBlocks) {
       if (toolUse.type !== 'tool_use') continue;
 
+      const input = toolUse.input as Record<string, any>;
       let result = '';
 
       try {
         if (toolUse.name === 'list_linear_issues') {
           const issues = await listLinearIssues(
-            toolUse.input.status,
-            toolUse.input.sprint,
-            toolUse.input.priority
+            input.status,
+            input.sprint,
+            input.priority
           );
           result = JSON.stringify(issues);
         } else if (toolUse.name === 'create_linear_issue') {
           const issue = await createLinearIssue(
-            toolUse.input.title,
-            toolUse.input.description,
-            toolUse.input.priority,
-            toolUse.input.labels
+            input.title,
+            input.description,
+            input.priority,
+            input.labels
           );
           result = JSON.stringify(issue);
         } else if (toolUse.name === 'update_linear_issue') {
           const updated = await updateLinearIssue(
-            toolUse.input.id,
-            toolUse.input.status,
-            toolUse.input.description
+            input.id,
+            input.status,
+            input.description
           );
           result = JSON.stringify(updated);
         } else {
@@ -279,7 +225,7 @@ export async function orchestrateConversation(
     response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2000,
-      system: SYSTEM_PROMPT,
+      system: systemPromptWithMemory,
       tools: tools as any,
       messages: messages as any,
     });
@@ -287,4 +233,122 @@ export async function orchestrateConversation(
 
   const textContent = response.content.find((block) => block.type === 'text');
   return textContent && textContent.type === 'text' ? textContent.text : '';
+}
+
+// ── Post-Call Memory Extraction ─────────────────────────────────────────
+// Called at call_ended to generate a structured summary + extract memories
+
+const MEMORY_EXTRACTION_PROMPT = `You are a memory extraction system for Dale Purvis's PA. Given a call transcript, extract:
+
+1. A concise summary (2-3 sentences max)
+2. Key decisions made (array of strings)
+3. Action items / follow-ups (array of strings)
+4. Topics discussed (array of short labels)
+5. Dale's mood (one word: focused, frustrated, energised, tired, neutral, excited, stressed)
+6. Important facts to remember for future calls — these become memory entries
+
+For memory entries, categorise each as:
+- "decision" — something Dale decided
+- "task" — something that needs doing
+- "idea" — something Dale floated but didn't commit to
+- "person" — a note about someone (supplier, staff, contact)
+- "preference" — how Dale likes things done
+- "context" — business context worth remembering
+- "followup" — something to check back on
+
+Rate importance 1-5 (5 = critical, always surface; 1 = nice to know).
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "summary": "...",
+  "key_decisions": ["..."],
+  "action_items": ["..."],
+  "topics_discussed": ["..."],
+  "mood": "...",
+  "memories": [
+    {
+      "category": "decision|task|idea|person|preference|context|followup",
+      "summary": "...",
+      "details": "...",
+      "tags": ["..."],
+      "importance": 1-5
+    }
+  ]
+}`;
+
+interface ExtractedMemory {
+  summary: string;
+  key_decisions: string[];
+  action_items: string[];
+  topics_discussed: string[];
+  mood: string;
+  memories: Array<{
+    category: MemoryEntry['category'];
+    summary: string;
+    details?: string;
+    tags?: string[];
+    importance: number;
+  }>;
+}
+
+export async function generateCallSummary(
+  callId: string,
+  callType: 'morning' | 'evening' | 'adhoc',
+  conversationHistory: ConversationMessage[]
+): Promise<void> {
+  if (conversationHistory.length === 0) return;
+
+  const transcript = conversationHistory
+    .map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`)
+    .join('\n\n');
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      system: MEMORY_EXTRACTION_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: `Call type: ${callType}\nCall ID: ${callId}\n\nTranscript:\n${transcript}`,
+        },
+      ],
+    });
+
+    const textContent = response.content.find((block) => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') return;
+
+    const extracted: ExtractedMemory = JSON.parse(textContent.text);
+
+    // Save the call summary
+    await saveCallSummary({
+      call_id: callId,
+      call_type: callType,
+      summary: extracted.summary,
+      key_decisions: extracted.key_decisions,
+      action_items: extracted.action_items,
+      topics_discussed: extracted.topics_discussed,
+      mood: extracted.mood,
+    });
+
+    // Save individual memory entries
+    if (extracted.memories && extracted.memories.length > 0) {
+      const entries: MemoryEntry[] = extracted.memories.map((mem) => ({
+        call_id: callId,
+        category: mem.category,
+        summary: mem.summary,
+        details: mem.details,
+        tags: mem.tags,
+        importance: mem.importance,
+      }));
+      await saveMemoryEntries(entries);
+    }
+
+    console.log(
+      `Memory saved for call ${callId}: ${extracted.memories?.length || 0} entries, summary: "${extracted.summary.substring(0, 80)}..."`
+    );
+  } catch (err) {
+    console.error('Memory extraction failed (non-blocking):', err);
+    // Non-blocking — don't let memory failures break the call flow
+  }
 }

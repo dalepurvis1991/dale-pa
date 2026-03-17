@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { orchestrateConversation } from '@/lib/claude';
+import { orchestrateConversation, generateCallSummary } from '@/lib/claude';
 import {
   saveMessage,
   getConversationHistory,
@@ -7,6 +7,7 @@ import {
   updateCallRecord,
   deleteConversationMessages,
 } from '@/lib/db';
+import { cleanupExpiredMemories } from '@/lib/memory';
 
 interface RetellMessage {
   role: 'user' | 'assistant';
@@ -68,11 +69,18 @@ export async function POST(request: NextRequest) {
 
     if (event === 'call_ended') {
       const startTime = callMetadata[call_id]?.startTime || new Date();
+      const callType = callMetadata[call_id]?.type || 'adhoc';
       const endTime = new Date();
       const durationSeconds = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
 
-      let summary = 'Call completed';
+      // Get full conversation history for memory extraction
       const history = await getConversationHistory(call_id);
+      const conversationHistory = history.map((msg) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      }));
+
+      let summary = 'Call completed';
       if (history.length > 0) {
         const lastMessage = history[history.length - 1];
         summary = lastMessage.content.substring(0, 200);
@@ -82,6 +90,15 @@ export async function POST(request: NextRequest) {
         duration_seconds: durationSeconds,
         summary,
       });
+
+      // Generate memory summary in the background (non-blocking)
+      // This calls Claude to extract decisions, tasks, and context from the call
+      generateCallSummary(call_id, callType, conversationHistory).catch((err) =>
+        console.error('Background memory generation failed:', err)
+      );
+
+      // Periodically clean up expired memories (non-blocking)
+      cleanupExpiredMemories().catch(() => {});
 
       delete callMetadata[call_id];
 
