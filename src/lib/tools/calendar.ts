@@ -76,8 +76,8 @@ export async function checkCalendar(date: string): Promise<CalendarEvent[]> {
           start: event.start?.dateTime || event.start?.date || '',
           end: event.end?.dateTime || event.end?.date || '',
           attendees: event.attendees?.map((a) => a.email || '') || [],
-          location: event.location,
-          description: event.description,
+          location: event.location ?? undefined,
+          description: event.description ?? undefined,
         });
       }
     }
