@@ -214,7 +214,7 @@ export async function orchestrateConversation(
 
     messages.push({
       role: 'assistant',
-      content: response.content,
+      content: response.content as any,
     });
 
     messages.push({
