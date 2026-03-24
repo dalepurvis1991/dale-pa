@@ -50,7 +50,7 @@ export async function listLinearIssues(
     const issues = await linearClient.issues(filters);
     const result: LinearIssue[] = [];
 
-    for (const issue of issues) {
+    for (const issue of issues.nodes) {
       const labels = (await issue.labels()).nodes.map((l) => l.name);
       result.push({
         id: issue.id,
