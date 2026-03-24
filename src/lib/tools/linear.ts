@@ -1,4 +1,4 @@
-import { LinearClient, IssueFilter } from '@linear/sdk';
+import { LinearClient } from '@linear/sdk';
 
 const linearClient = new LinearClient({
   apiKey: process.env.LINEAR_API_KEY || '',
@@ -26,7 +26,7 @@ export async function listLinearIssues(
       throw new Error('Floor Giants team not found');
     }
 
-    const filters: IssueFilter = {
+    const filters: any = {
       team: { key: { eq: 'FLO' } },
     };
 

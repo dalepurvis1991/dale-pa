@@ -154,6 +154,30 @@ export async function orchestrateConversation(
         required: ['id'],
       },
     },
+    {
+      name: 'create_cowork_handoff',
+      description:
+        'Hand off a task to Claude Cowork for execution. Use this when Dale asks you to do something you cannot do during a call — send an email, book a calendar event, research something, update Odoo, draft a document, etc. Cowork will pick it up automatically and execute it. Always confirm to Dale what you\'ve handed off.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Short, clear title of what needs to be done (e.g., "Draft email to Brett re Hull delivery")',
+          },
+          description: {
+            type: 'string',
+            description:
+              'Full instructions for Cowork — be specific. Include: what to do, who it involves, any context Dale gave, and what the output should be. Write as if briefing a colleague who wasn\'t on the call.',
+          },
+          priority: {
+            type: 'string',
+            description: "Priority: 'urgent', 'high', 'medium', 'low' (default: 'medium')",
+          },
+        },
+        required: ['title', 'description', 'priority'],
+      },
+    },
   ];
 
   let response = await client.messages.create({
@@ -198,6 +222,14 @@ export async function orchestrateConversation(
             input.description
           );
           result = JSON.stringify(updated);
+        } else if (toolUse.name === 'create_cowork_handoff') {
+          const issue = await createLinearIssue(
+            input.title,
+            `🤖 **Cowork Handoff — created during voice call**\n\n${input.description}`,
+            input.priority,
+            ['🤖 Claude Action']
+          );
+          result = JSON.stringify({ ...issue, handoff: true });
         } else {
           result = JSON.stringify({ error: `Unknown tool: ${toolUse.name}` });
         }
