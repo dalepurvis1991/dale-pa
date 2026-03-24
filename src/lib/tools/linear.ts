@@ -4,6 +4,9 @@ const linearClient = new LinearClient({
   apiKey: process.env.LINEAR_API_KEY || '',
 });
 
+// Hardcoded — Floor Giants team, avoids SDK version issues with findOne
+const FLO_TEAM_ID = '19d55536-0758-44ce-b3ad-82b7ebb3ddcb';
+
 export interface LinearIssue {
   id: string;
   identifier: string;
@@ -20,12 +23,6 @@ export async function listLinearIssues(
   priority?: string
 ): Promise<LinearIssue[]> {
   try {
-    const team = await linearClient.teams.findOne('Floor Giants');
-
-    if (!team) {
-      throw new Error('Floor Giants team not found');
-    }
-
     const filters: any = {
       team: { key: { eq: 'FLO' } },
     };
@@ -80,12 +77,6 @@ export async function createLinearIssue(
   labels?: string[]
 ): Promise<LinearIssue> {
   try {
-    const team = await linearClient.teams.findOne('Floor Giants');
-
-    if (!team) {
-      throw new Error('Floor Giants team not found');
-    }
-
     const priorityMap: { [key: string]: number } = {
       urgent: 1,
       high: 2,
@@ -94,32 +85,39 @@ export async function createLinearIssue(
     };
 
     const createInput = {
-      teamId: team.id,
+      teamId: FLO_TEAM_ID,
       title,
       description,
       priority: priorityMap[priority] || 3,
     };
 
-    const issue = await linearClient.issues.create(createInput);
+    const issue = await linearClient.createIssue(createInput);
+    const createdIssue = await issue.issue;
+
+    if (!createdIssue) {
+      throw new Error('Issue creation failed — no issue returned');
+    }
 
     if (labels && labels.length > 0) {
       for (const labelName of labels) {
-        const existingLabels = await linearClient.issueLabels({ filter: { name: { eq: labelName } } });
+        const existingLabels = await linearClient.issueLabels({
+          filter: { name: { eq: labelName } },
+        });
         if (existingLabels.nodes.length > 0) {
-          await issue.addLabel(existingLabels.nodes[0].id);
+          await createdIssue.addLabel(existingLabels.nodes[0].id);
         }
       }
     }
 
-    const issueLabels = (await issue.labels()).nodes.map((l) => l.name);
+    const issueLabels = (await createdIssue.labels()).nodes.map((l) => l.name);
 
     return {
-      id: issue.id,
-      identifier: issue.identifier,
-      title: issue.title,
-      description: issue.description || '',
-      status: issue.state?.name || 'To Do',
-      priority: issue.priority || 0,
+      id: createdIssue.id,
+      identifier: createdIssue.identifier,
+      title: createdIssue.title,
+      description: createdIssue.description || '',
+      status: createdIssue.state?.name || 'To Do',
+      priority: createdIssue.priority || 0,
       labels: issueLabels,
     };
   } catch (err) {
@@ -147,15 +145,14 @@ export async function updateLinearIssue(
     }
 
     if (status) {
-      const team = await linearClient.teams.findOne('Floor Giants');
-      if (team) {
-        const workflowStates = await linearClient.workflowStates({ filter: { team: { id: { eq: team.id } } } });
-        const targetState = workflowStates.nodes.find(
-          (s) => s.name.toLowerCase() === status.toLowerCase()
-        );
-        if (targetState) {
-          updateData.stateId = targetState.id;
-        }
+      const workflowStates = await linearClient.workflowStates({
+        filter: { team: { id: { eq: FLO_TEAM_ID } } },
+      });
+      const targetState = workflowStates.nodes.find(
+        (s) => s.name.toLowerCase() === status.toLowerCase()
+      );
+      if (targetState) {
+        updateData.stateId = targetState.id;
       }
     }
 
