@@ -82,7 +82,7 @@ export async function listLinearIssues(
       filters.cycle = { isNext: { eq: true } };
     }
 
-    const issueConnection = await linearClient.issues(filters);
+    const issueConnection = await linearClient.issues({ filter: filters });
     const result: LinearIssue[] = [];
 
     for (const issue of issueConnection.nodes) {
@@ -125,7 +125,7 @@ export async function createLinearIssue(
       ? await resolveLabelIds(labels)
       : undefined;
 
-    const payload = await linearClient.issueCreate({
+    const payload = await linearClient.createIssue({
       teamId: FLO_TEAM_ID,
       title,
       description,
@@ -179,7 +179,7 @@ export async function updateLinearIssue(
       }
     }
 
-    await linearClient.issueUpdate(issueId, updateData);
+    await linearClient.updateIssue(issueId, updateData);
 
     const refreshedIssue = await linearClient.issue(issueId);
     const issueLabels = await resolveLabels(refreshedIssue);
