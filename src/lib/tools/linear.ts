@@ -35,6 +35,23 @@ async function resolveLabels(issue: any): Promise<string[]> {
   }
 }
 
+async function resolveLabelIds(labelNames: string[]): Promise<string[]> {
+  const ids: string[] = [];
+  for (const name of labelNames) {
+    try {
+      const result = await linearClient.issueLabels({
+        filter: { name: { eq: name } },
+      });
+      if (result.nodes.length > 0) {
+        ids.push(result.nodes[0].id);
+      }
+    } catch {
+      // skip unresolvable labels
+    }
+  }
+  return ids;
+}
+
 export async function listLinearIssues(
   status?: string,
   sprint?: string,
@@ -65,10 +82,10 @@ export async function listLinearIssues(
       filters.cycle = { isNext: { eq: true } };
     }
 
-    const issues = await linearClient.issues(filters);
+    const issueConnection = await linearClient.issues(filters);
     const result: LinearIssue[] = [];
 
-    for (const issue of issues.nodes) {
+    for (const issue of issueConnection.nodes) {
       const labels = await resolveLabels(issue);
       const stateName = await resolveStateName(issue);
       result.push({
@@ -103,27 +120,22 @@ export async function createLinearIssue(
       low: 4,
     };
 
-    const payload = await linearClient.createIssue({
+    // Resolve label names to IDs before creating
+    const labelIds = labels && labels.length > 0
+      ? await resolveLabelIds(labels)
+      : undefined;
+
+    const payload = await linearClient.issueCreate({
       teamId: FLO_TEAM_ID,
       title,
       description,
       priority: priorityMap[priority] || 3,
+      labelIds,
     });
 
     const createdIssue = await payload.issue;
     if (!createdIssue) {
       throw new Error('Issue creation failed — no issue returned');
-    }
-
-    if (labels && labels.length > 0) {
-      for (const labelName of labels) {
-        const existingLabels = await linearClient.issueLabels({
-          filter: { name: { eq: labelName } },
-        });
-        if (existingLabels.nodes.length > 0) {
-          await createdIssue.addLabel(existingLabels.nodes[0].id);
-        }
-      }
     }
 
     const issueLabels = await resolveLabels(createdIssue);
@@ -150,12 +162,6 @@ export async function updateLinearIssue(
   description?: string
 ): Promise<LinearIssue> {
   try {
-    const issue = await linearClient.issue(issueId);
-
-    if (!issue) {
-      throw new Error(`Issue ${issueId} not found`);
-    }
-
     const updateData: any = {};
 
     if (description !== undefined) {
@@ -163,10 +169,9 @@ export async function updateLinearIssue(
     }
 
     if (status) {
-      const workflowStates = await linearClient.workflowStates({
-        filter: { team: { id: { eq: FLO_TEAM_ID } } },
-      });
-      const targetState = workflowStates.nodes.find(
+      const team = await linearClient.team(FLO_TEAM_ID);
+      const stateConnection = await team.states();
+      const targetState = stateConnection.nodes.find(
         (s: any) => s.name.toLowerCase() === status.toLowerCase()
       );
       if (targetState) {
@@ -174,7 +179,7 @@ export async function updateLinearIssue(
       }
     }
 
-    await issue.update(updateData);
+    await linearClient.issueUpdate(issueId, updateData);
 
     const refreshedIssue = await linearClient.issue(issueId);
     const issueLabels = await resolveLabels(refreshedIssue);
