@@ -4,9 +4,9 @@
   "description": "Retell.ai + Claude voice PA for Dale Purvis - Floor Giants Group",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "tsx server.ts",
     "build": "next build",
-    "start": "next start",
+    "start": "tsx server.ts",
     "lint": "next lint"
   },
   "dependencies": {
@@ -16,7 +16,9 @@
     "@anthropic-ai/sdk": "^0.24.0",
     "@linear/sdk": "^77.0.0",
     "googleapis": "^131.0.0",
-    "pg": "^8.11.0"
+    "pg": "^8.11.0",
+    "ws": "^8.18.0",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
@@ -24,6 +26,7 @@
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
     "@types/pg": "^8.11.0",
+    "@types/ws": "^8.5.13",
     "tailwindcss": "^3.4.1",
     "postcss": "^8.4.32",
     "autoprefixer": "^10.4.17"
