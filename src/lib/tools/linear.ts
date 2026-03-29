@@ -1,7 +1,18 @@
 import { LinearClient } from '@linear/sdk';
 
-const linearClient = new LinearClient({
-  apiKey: process.env.LINEAR_API_KEY || '',
+// Lazy initialisation — avoids SDK throwing at Next.js build time when env vars aren't present
+let _linearClient: LinearClient | null = null;
+function getLinearClient(): LinearClient {
+  if (!_linearClient) {
+    _linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY || '' });
+  }
+  return _linearClient;
+}
+// Keep a module-level alias so existing code continues to work unchanged
+const linearClient = new Proxy({} as LinearClient, {
+  get(_target, prop) {
+    return (getLinearClient() as any)[prop];
+  },
 });
 
 // Hardcoded — Floor Giants team

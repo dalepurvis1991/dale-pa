@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  // Don't attempt to statically render API routes at build time
+  output: 'standalone',
   experimental: {
     esmExternals: true,
   },
